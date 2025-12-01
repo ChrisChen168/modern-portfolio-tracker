@@ -3,6 +3,7 @@ import pandas as pd
 import yfinance as yf
 import plotly.express as px
 import os
+import google.generativeai as genai
 
 # --- Configuration ---
 st.set_page_config(
@@ -12,7 +13,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- Constants ---
 # --- Constants ---
 PORTFOLIO_FILE = 'portfolio.csv'
 
@@ -100,6 +100,17 @@ with st.sidebar:
             st.session_state.lang = lang_selection
             # Future: Implement translation logic
             st.rerun()
+        
+        st.write("### AI Configuration")
+        api_key = None
+        if "GOOGLE_API_KEY" in st.secrets:
+            api_key = st.secrets["GOOGLE_API_KEY"]
+            st.success("API Key loaded from secrets.")
+        else:
+            api_key = st.text_input("Gemini API Key", type="password", help="Get your key at aistudio.google.com")
+        
+        if api_key:
+            genai.configure(api_key=api_key)
 
 current_theme = THEME_DARK if st.session_state.theme == 'Dark' else THEME_LIGHT
 
@@ -238,7 +249,6 @@ def get_stock_history(ticker, period="6mo"):
 # --- Main Dashboard ---
 st.title("🚀 Modern Portfolio Tracker")
 
-# --- Portfolio Manager ---
 # --- Portfolio Manager ---
 with st.expander("Manage Portfolio"):
     # Initialize session state for search
@@ -500,7 +510,10 @@ if not df.empty:
         metric_card("Est. Annual Income", total_annual_dividend)
 
     st.markdown("---")
+
     
+
+ 
     # Charts Row
     col_chart1, col_chart2 = st.columns(2)
     
@@ -548,7 +561,7 @@ if not df.empty:
     st.subheader("Holdings")
     
     st.data_editor(
-        portfolio_df,
+        styled_df,
         use_container_width=True,
         column_config={
             "Ticker": st.column_config.TextColumn("Ticker", help="Stock Symbol"),
@@ -564,6 +577,42 @@ if not df.empty:
         hide_index=True,
         disabled=True
     )
+
+    # --- AI Portfolio Analyst ---
+    st.markdown("---")
+    st.subheader("🤖 AI Portfolio Analyst")
+    
+    with st.expander("Analyze Portfolio with Gemini", expanded=False):
+        if not api_key:
+            st.warning("Please enter your Gemini API Key in the Settings sidebar to use this feature.")
+        else:
+            if st.button("Generate Analysis"):
+                with st.spinner("Analyzing your portfolio..."):
+                    try:
+                        # Construct Prompt
+                        portfolio_summary = portfolio_df.to_string(index=False)
+                        prompt = f"""
+                        You are a professional financial advisor. Analyze this stock portfolio:
+                        
+                        {portfolio_summary}
+                        
+                        Total Value: ${total_value:,.2f}
+                        Total Gain/Loss: ${total_gain_loss:,.2f} ({total_gain_loss_pct:.2f}%)
+                        
+                        Please provide:
+                        1. A brief performance summary.
+                        2. An assessment of diversification and risk.
+                        3. Three specific, actionable suggestions for improvement.
+                        
+                        Keep the tone professional but accessible. Use markdown for formatting.
+                        """
+                        
+                        model = genai.GenerativeModel('gemini-pro')
+                        response = model.generate_content(prompt)
+                        st.markdown(response.text)
+                        
+                    except Exception as e:
+                        st.error(f"AI Analysis Failed: {e}")
 
 else:
     st.info("Your portfolio is empty. Add assets using the 'Manage Portfolio' section above to get started!")
